@@ -1,0 +1,18 @@
+designate:
+  authUrl: https://prod1.api.pco.get-cloud.io:5000/v3/ # When using the Designate provider, specify the OpenStack authentication Url. 
+  regionName: "prod1" #When using the Designate provider, specify the OpenStack region name. 
+  userDomainName: "pco" #When using the Designate provider, specify the OpenStack user domain name. 
+
+provider: designate
+
+extraEnv:
+  - name: OS_IDENTITY_API_VERSION
+    value: "3"
+  - name: OS_AUTH_TYPE
+    value: "v3applicationcredential"
+  # override with secret.yaml
+  - name: OS_APPLICATION_CREDENTIAL_ID
+    value: ""
+  # override with secret.yaml
+  - name: OS_APPLICATION_CREDENTIAL_SECRET
+    value: ""
