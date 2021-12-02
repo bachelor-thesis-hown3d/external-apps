@@ -1,0 +1,13 @@
+users:
+  - name: oidc
+    user:
+      exec:
+        apiVersion: client.authentication.k8s.io/v1beta1
+        command: kubectl
+        args:
+          - oidc-login
+          - get-token
+          - --oidc-issuer-url=https://localhost:8443/auth/realms/kubernetes
+          - --oidc-client-id=kubernetes
+          - --oidc-client-secret=c73f0a5f-8867-4cfc-8c4a-b6a6e563cbf9
+          - --insecure-skip-tls-verify
