@@ -1,8 +1,10 @@
 designate:
-  authUrl: https://prod1.api.pco.get-cloud.io:5000/v3/ # When using the Designate provider, specify the OpenStack authentication Url. 
-  regionName: "prod1" #When using the Designate provider, specify the OpenStack region name. 
-  userDomainName: "pco" #When using the Designate provider, specify the OpenStack user domain name. 
+  authUrl: http://keystone:5000/v3/ # When using the Designate provider, specify the OpenStack authentication Url.
+  regionName: "RegionDev" #When using the Designate provider, specify the OpenStack region name.
+  userDomainName: "Default" #When using the Designate provider, specify the OpenStack user domain name.
+  projectName: "apps"
 
+logLevel: trace
 provider: designate
 
 extraEnv:

@@ -1,100 +1,92 @@
 version: "3.8"
 services:
   mysql:
-    image: bitnami/mysql:5.7.36
+    image: docker.io/bitnami/mysql:5.7.36
     environment:
       - MYSQL_ROOT_PASSWORD=lulw
       - MYSQL_AUTHENTICATION_PLUGIN=mysql_native_password
-      - BITNAMI_DEBUG=true
     volumes:
-      - ./mysql:/docker-entrypoint-initdb.d/
-    dns: 8.8.8.8
+      - ./mysql:/docker-entrypoint-initdb.d
     ports:
       - 3306:3306
     networks:
       - openstack
   rabbitmq:
-    image: bitnami/rabbitmq
+    image: docker.io/bitnami/rabbitmq
     environment:
       - RABBITMQ_USERNAME=openstack
       - RABBITMQ_PASSWORD=openstack
-    dns: 8.8.8.8
     networks:
       - openstack
   redis:
-    image: bitnami/redis
+    image: docker.io/bitnami/redis
     networks:
       - openstack
     environment:
       - ALLOW_EMPTY_PASSWORD=yes
   designate-mdns:
     hostname: designate-mdns
-    image: kolla/ubuntu-binary-designate-mdns:victoria
+    image: docker.io/kolla/ubuntu-binary-designate-mdns:victoria
     volumes:
-      - ./openstack-components/designate/mdns:/var/lib/kolla/config_files/mdns/
-      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf/
+      - ./openstack-components/designate/mdns:/var/lib/kolla/config_files/mdns
+      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf
     environment:
       - KOLLA_CONFIG_STRATEGY=COPY_ONCE
       - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/mdns/config.json
     networks:
       openstack:
         ipv4_address: 10.255.255.20
-    dns: 8.8.8.8
     depends_on:
       - mysql
       - rabbitmq
   designate-worker:
-    image: kolla/ubuntu-binary-designate-worker:victoria
+    image: docker.io/kolla/ubuntu-binary-designate-worker:victoria
     volumes:
-      - ./openstack-components/designate/worker:/var/lib/kolla/config_files/worker/
-      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf/
-      - ./openstack-components/designate/bind/secret:/var/lib/kolla/secret/
+      - ./openstack-components/designate/worker:/var/lib/kolla/config_files/worker
+      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf
+      - ./openstack-components/designate/bind/secret:/var/lib/kolla/secret
     environment:
       - KOLLA_CONFIG_STRATEGY=COPY_ONCE
       - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/worker/config.json
     networks:
       - openstack
-    dns: 8.8.8.8
     depends_on:
       - mysql
       - rabbitmq
   designate-producer:
-    image: kolla/ubuntu-binary-designate-producer:victoria
+    image: docker.io/kolla/ubuntu-binary-designate-producer:victoria
     volumes:
-      - ./openstack-components/designate/producer:/var/lib/kolla/config_files/producer/
-      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf/
+      - ./openstack-components/designate/producer:/var/lib/kolla/config_files/producer
+      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf
     environment:
       - KOLLA_CONFIG_STRATEGY=COPY_ONCE
       - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/producer/config.json
     networks:
       - openstack
-    dns: 8.8.8.8
     depends_on:
       - mysql
       - rabbitmq
   designate-central:
-    image: kolla/ubuntu-binary-designate-central:victoria
+    image: docker.io/kolla/ubuntu-binary-designate-central:victoria
     volumes:
-      - ./openstack-components/designate/central:/var/lib/kolla/config_files/central/
-      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf/
+      - ./openstack-components/designate/central:/var/lib/kolla/config_files/central
+      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf
     environment:
       - KOLLA_CONFIG_STRATEGY=COPY_ONCE
       - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/central/config.json
-    dns: 8.8.8.8
     networks:
       - openstack
     depends_on:
       - mysql
       - rabbitmq
   designate-manage:
-    image: kolla/ubuntu-binary-designate-central:victoria
+    image: docker.io/kolla/ubuntu-binary-designate-central:victoria
     volumes:
-      - ./openstack-components/designate/manager:/var/lib/kolla/config_files/manager/
-      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf/
+      - ./openstack-components/designate/manager:/var/lib/kolla/config_files/manager
+      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf
     environment:
       - KOLLA_CONFIG_STRATEGY=COPY_ONCE
       - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/manager/config.json
-    dns: 8.8.8.8
     networks:
       - openstack
     depends_on:
@@ -102,14 +94,13 @@ services:
       - rabbitmq
       - designate-central
   designate-api:
-    image: kolla/ubuntu-binary-designate-api:victoria
+    image: docker.io/kolla/ubuntu-binary-designate-api:victoria
     volumes:
-      - ./openstack-components/designate/api:/var/lib/kolla/config_files/api/
-      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf/
+      - ./openstack-components/designate/api:/var/lib/kolla/config_files/api
+      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf
     environment:
       - KOLLA_CONFIG_STRATEGY=COPY_ONCE
       - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/api/config.json
-    dns: 8.8.8.8
     networks:
       - openstack
     depends_on:
@@ -117,16 +108,17 @@ services:
       - rabbitmq
   bind:
     domainname: ns1.chat-cluster.com
-    image: internetsystemsconsortium/bind9:9.17
+    image: docker.io/internetsystemsconsortium/bind9:9.17
     volumes:
       - ./openstack-components/designate/bind/conf:/etc/bind/conf
-      - ./openstack-components/designate/bind/secret:/etc/rndc_keys/
+      - ./openstack-components/designate/bind/secret:/etc/rndc_keys
+    command: ["/usr/sbin/named", "-g", "-c", "/etc/bind/conf/named.conf", "-u", "bind"]
     networks:
       openstack:
         ipv4_address: 10.255.255.21
   keystone:
     hostname: keystone
-    image: kolla/ubuntu-binary-keystone:victoria
+    image: docker.io/kolla/ubuntu-binary-keystone:victoria
     volumes:
       - ./openstack-components/keystone:/var/lib/kolla/config_files
     environment:
@@ -137,7 +129,6 @@ services:
       - openstack
     depends_on:
       - mysql
-    dns: 8.8.8.8
     ports:
       # admin
       - 5000:5000
@@ -152,17 +143,17 @@ services:
       - KEYCLOAK_USER=admin
       - KEYCLOAK_PASSWORD=keycloak
       - DB_VENDOR=mysql
-      - DB_ADDR=mysql:3306
+      - DB_ADDR=mysql
       - DB_DATABASE=keycloak
       - DB_USER=keycloak
       - DB_PASSWORD=keycloak
     ports:
       - "8443:8443"
     volumes:
-      - ./startup-scripts:/tmp/scripts
+      - ./keycloak/startup-scripts:/tmp/scripts
     depends_on:
       - mysql
 networks:
   openstack:
     external: true
-    name: omegalul-chat-cluster
+    name: chat-cluster

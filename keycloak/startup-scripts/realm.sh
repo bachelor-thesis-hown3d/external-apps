@@ -1,7 +1,8 @@
 #!/bin/sh
 
 KEYSTORE_PASSWORD=$(cat $JBOSS_HOME/bin/.jbossclirc | grep password | cut -b 36-)
-
+KEYCLOAK_ADMIN_USER=$1
+KEYCLOAK_ADMIN_PASSWORD=$2
 KCADM=/opt/jboss/keycloak/bin/kcadm.sh 
 
 $KCADM config truststore \
@@ -11,24 +12,17 @@ $KCADM config truststore \
 $KCADM config credentials \
 --server https://localhost:8443/auth \
 --realm master \
---user $KEYCLOAK_USER \
---password $KEYCLOAK_PASSWORD  2>/dev/null
+--user $KEYCLOAK_ADMIN_USER \
+--password $KEYCLOAK_ADMIN_PASSWORD  
 
+$KCADM create realms -s realm=kubernetes -s enabled=true
 
-id=$($KCADM get realms/kubernetes --fields id --format 'csv' | tr -d '"')
+#id=$($KCADM get clients -r kubernetes --query clientId=kubernetes --fields id --format 'csv' | tr -d '"')
 opts='-s clientId=kubernetes -s redirectUris=["/kubernetes/*"]'
-if test -z $id; then
-$KCADM create clients -r kubernetes $opts 2>/dev/null
-else 
-$KCADM update clients/$id -r kubernetes $opts 2>/dev/null
-fi
+#if test -z $id; then
+clientID=$($KCADM create clients -r kubernetes $opts | awk -F \' '{print $(NF-1)}')
+#else 
+#$KCADM update clients/$id -r kubernetes $opts
+#fi
 
-id=$($KCADM get clients -r kubernetes --query clientId=kubernetes --fields id --format 'csv' | tr -d '"')
-opts='-s clientId=kubernetes -s redirectUris=["/kubernetes/*"]'
-if test -z $id; then
-$KCADM create clients -r kubernetes $opts 2>/dev/null
-else 
-$KCADM update clients/$id -r kubernetes $opts 2>/dev/null
-fi
-
-$KCADM get clients/$id/client-secret -r kubernetes
+#$KCADM get clients/$clientID/client-secret -r kubernetes
