@@ -2,7 +2,7 @@ version: "3.8"
 services:
   keycloak:
     networks:
-      - kind
+      - chat-cluster
     build:
       context: .
       dockerfile: Dockerfile
@@ -22,15 +22,3 @@ services:
       - ./startup-scripts:/tmp/scripts
     depends_on:
       - postgres
-
-  postgres:
-    networks:
-      - kind
-    image: bitnami/postgresql:13
-    environment:
-      - POSTGRESQL_DATABASE=keycloak
-      - POSTGRESQL_USERNAME=keycloak
-      - POSTGRESQL_PASSWORD=keycloak
-
-networks:
-  kind: null
