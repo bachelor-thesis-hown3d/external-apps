@@ -45,6 +45,7 @@ $OPENSTACK endpoint create --region RegionDev dns public http://designate-api:90
 
 $OPENSTACK dns service list
 
+# TODO: error: no_servers_configured, maybe uses wrong pool
 printf 'creating designate chat-cluster.com zone!'
 $OPENSTACK zone create --email dnsmaster@example.com --attributes=[chat-cluster:True] chat-cluster.com.
 
