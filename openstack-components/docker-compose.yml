@@ -1,0 +1,175 @@
+version: "3.8"
+services:
+  mysql:
+    image: bitnami/mysql:5.7.36
+    environment:
+      - MYSQL_ROOT_PASSWORD=lulw
+      - MYSQL_AUTHENTICATION_PLUGIN=mysql_native_password
+      - BITNAMI_DEBUG=true
+    volumes:
+      - ./mysql:/docker-entrypoint-initdb.d/
+    dns:
+      - 10.255.255.21
+      - 1.1.1.1
+    ports:
+      - 3306:3306
+    networks:
+      - openstack
+
+  rabbitmq:
+    image: bitnami/rabbitmq
+    environment:
+      - RABBITMQ_USERNAME=openstack
+      - RABBITMQ_PASSWORD=openstack
+    dns:
+      - 10.255.255.21
+      - 1.1.1.1
+    networks:
+      - openstack
+
+  redis:
+    image: bitnami/redis
+    networks:
+      - openstack
+    #environment:
+    #  - REDIS_USERNAME=openstack
+    #  - REDIS_PASSWORD=openstack
+
+  designate-mdns:
+    hostname: designate-mdns
+    image: kolla/ubuntu-binary-designate-mdns:victoria
+    volumes:
+      - ./designate/mdns:/var/lib/kolla/config_files/mdns/
+      - ./designate/conf:/var/lib/kolla/config_files/conf/
+    environment:
+      - KOLLA_CONFIG_STRATEGY=COPY_ONCE
+      - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/mdns/config.json
+    networks:
+      openstack:
+        ipv4_address: 10.255.255.20
+    dns:
+      - 10.255.255.21
+      - 1.1.1.1
+    depends_on:
+      - mysql
+      - rabbitmq
+
+  designate-worker:
+    image: kolla/ubuntu-binary-designate-worker:victoria
+    volumes:
+      - ./designate/worker:/var/lib/kolla/config_files/worker/
+      - ./designate/conf:/var/lib/kolla/config_files/conf/
+    environment:
+      - KOLLA_CONFIG_STRATEGY=COPY_ONCE
+      - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/worker/config.json
+    networks:
+      - openstack
+    dns:
+      - 10.255.255.21
+      - 1.1.1.1
+    depends_on:
+      - mysql
+      - rabbitmq
+
+  designate-producer:
+    image: kolla/ubuntu-binary-designate-producer:victoria
+    volumes:
+      - ./designate/producer:/var/lib/kolla/config_files/producer/
+      - ./designate/conf:/var/lib/kolla/config_files/conf/
+    environment:
+      - KOLLA_CONFIG_STRATEGY=COPY_ONCE
+      - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/producer/config.json
+    networks:
+      - openstack
+    dns:
+      - 10.255.255.21
+      - 1.1.1.1
+    depends_on:
+      - mysql
+      - rabbitmq
+
+  designate-central:
+    image: kolla/ubuntu-binary-designate-central:victoria
+    volumes:
+      - ./designate/central:/var/lib/kolla/config_files/central/
+      - ./designate/conf:/var/lib/kolla/config_files/conf/
+    environment:
+      - KOLLA_CONFIG_STRATEGY=COPY_ONCE
+      - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/central/config.json
+    dns:
+      - 10.255.255.21
+      - 1.1.1.1
+    networks:
+      - openstack
+    depends_on:
+      - mysql
+      - rabbitmq
+
+  designate-manage:
+    image: kolla/ubuntu-binary-designate-central:victoria
+    volumes:
+      - ./designate/manager:/var/lib/kolla/config_files/manager/
+      - ./designate/conf:/var/lib/kolla/config_files/conf/
+      - ./designate/bind/secret:/var/lib/kolla/secret/
+    environment:
+      - KOLLA_CONFIG_STRATEGY=COPY_ONCE
+      - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/manager/config.json
+    networks:
+      - openstack
+    depends_on:
+      - mysql
+      - rabbitmq
+      - designate-central
+
+  designate-api:
+    image: kolla/ubuntu-binary-designate-api:victoria
+    volumes:
+      - ./designate/api:/var/lib/kolla/config_files/api/
+      - ./designate/conf:/var/lib/kolla/config_files/conf/
+    environment:
+      - KOLLA_CONFIG_STRATEGY=COPY_ONCE
+      - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/api/config.json
+    dns:
+      - 10.255.255.21
+      - 1.1.1.1
+    networks:
+      - openstack
+    depends_on:
+      - mysql
+      - rabbitmq
+
+  bind:
+    domainname: ns1.chat-cluster.com
+    hostname: bind
+    build:
+      context: designate/bind
+    networks:
+      openstack:
+        ipv4_address: 10.255.255.21
+
+  keystone:
+    hostname: keystone
+    image: kolla/ubuntu-binary-keystone:victoria
+    volumes:
+      - ./keystone:/var/lib/kolla/config_files
+    environment:
+      - KOLLA_CONFIG_STRATEGY=COPY_ONCE
+      - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/config.json
+      - KEYSTONE_ADMIN_PASSWORD=keystoneAdmin
+    networks:
+      - openstack
+    depends_on:
+      - mysql
+    dns:
+      - 10.255.255.21
+      - 1.1.1.1
+    ports:
+      # admin
+      - 5000:5000
+      # public
+      - 5001:5001
+
+networks:
+  openstack:
+    external: true
+    name: chat-cluster

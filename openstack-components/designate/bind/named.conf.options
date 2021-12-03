@@ -6,4 +6,5 @@ options {
   allow-new-zones yes;
   request-ixfr no;
   recursion no;
+  minimal-responses yes;
 };

@@ -1,8 +1,8 @@
 {
-  "command": "designate-mdns",
+  "command": "designate-central",
   "config_files": [
     {
-      "source": "/var/lib/kolla/config_files/designate.conf",
+      "source": "/var/lib/kolla/config_files/conf/designate.conf",
       "dest": "/etc/designate/designate.conf",
       "owner": "designate",
       "perm": "0600",
