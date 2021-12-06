@@ -5,12 +5,15 @@ set -o errtrace # Enable the err trap, code will get called when an error is det
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && /bin/pwd )"
 
 NETWORK=chat-cluster
-DOCKER_BIN="podman"
+DOCKER_BIN="docker"
 PID=$(id -u $(whoami))
-DOCKER_OPTS="DOCKER_HOST=unix:///run/user/$PID/podman/podman.sock"
+#DOCKER_OPTS="DOCKER_HOST=unix:///run/user/$PID/podman/podman.sock"
+#DOCKER_OPTS="DOCKER_HOST=unix:///run/podman/podman.sock"
 DOCKER_RUN="$DOCKER_BIN run --network $NETWORK --rm"
 CLUSTER_NAME=chat-cluster
+PROJECT="external-apps"
 COMPOSE="docker-compose"
+KIND_BIN="kind"
 
 export $DOCKER_OPTS
 export KIND_EXPERIMENTAL_${DOCKER_BIN^^}_NETWORK=$NETWORK
@@ -43,7 +46,7 @@ openstackRun() {
 cleanup() {
   $COMPOSE down 
   kind delete cluster --name $CLUSTER_NAME || true
-  $DOCKER_BIN network rm $NETWORK --force || true
+  $DOCKER_BIN network rm $NETWORK || true
   exit 1
 }
 
@@ -61,18 +64,49 @@ error() {
 }
 
 networkSetup() {
-  echo "Creating Docker network for cluster" >&3
-  $DOCKER_BIN network create --subnet 10.255.255.0/24 $NETWORK || true
-  echo "Setting network name in docker-compose file" >&3
-  NETWORK=$NETWORK yq e -i '.networks.openstack.name = strenv(NETWORK)' docker-compose.yml
+  echo "Creating Docker network for cluster" >&3 || true
+  $DOCKER_BIN network create $NETWORK
+  echo "Setting network name in docker-compose file" >&3 || true
+  NETWORK=$NETWORK yq e -i ".networks.$NETWORK.name = strenv(NETWORK)" docker-compose.yml
+  NETWORK=$NETWORK yq e -i ".networks.$NETWORK.external = true" docker-compose.yml
+  
+  echo "Setting up metallb network range"
+  CIDR=$($DOCKER_BIN inspect network $NETWORK --format "{{ (index .IPAM.Config 0).Subnet }}")
+  IP_PREFIX=$(echo $CIDR | cut -d '.' -f1-3)
+  METALLB_RANGE="${IP_PREFIX}.240-${IP_PREFIX}.250"
+  METALLB_RANGE=$METALLB_RANGE yq e -i ".configInline.address-pools[0].addresses[0] = strenv(METALLB_RANGE)" metallb/values.yaml
 }
+
+
 
 openstackSetup() {
 DESIGNATE_PASSWORD=designate
 DESIGNATE_USERNAME=designate
 
 echo "Creating openstack docker containers" >&3
-$COMPOSE up --build --remove-orphans -d --force-recreate
+$COMPOSE --project-name $PROJECT up --build --remove-orphans -d --force-recreate
+
+  echo "Setting ips for bind and designate-mdns in pools file" >&3 || true
+  if [[ $DOCKER_BIN == "podman" ]]
+  then
+  echo "implement for podman"
+  exit 1
+  elif [[ $DOCKER_BIN == "docker" ]]
+  then
+  format_string="'{{ \$network := index .NetworkSettings.Networks \"$PROJECT_$NETWORK\" }}{{ \$network.IPAddress }}'"
+  echo "$format_string"
+  MDNS_IP=$($DOCKER_BIN container inspect $PROJECT-designate-mdns-1 --format "$format_string" | tr -d "\'")
+  BIND_IP=$($DOCKER_BIN container inspect $PROJECT-bind-1 --format "$format_string" | tr -d "\'")
+  fi
+
+  BIND_IP=$BIND_IP yq e -i ".[0].nameservers[0].host = strenv(BIND_IP)" openstack-components/designate/manager/pools.yaml
+  BIND_IP=$BIND_IP yq e -i ".[0].targets[0].options.host = strenv(BIND_IP)" openstack-components/designate/manager/pools.yaml
+  BIND_IP=$BIND_IP yq e -i ".[0].targets[0].options.rndc_host = strenv(BIND_IP)" openstack-components/designate/manager/pools.yaml
+  MDNS_IP=$MDNS_IP yq e -i ".[0].targets[0].masters[0].host = strenv(MDNS_IP)" openstack-components/designate/manager/pools.yaml
+
+
+echo "Running migration for designate" >&3
+$COMPOSE exec designate-central sh /var/lib/kolla/config_files/manager/setup.sh
 
 echo "waiting for keystone to become available" >&3 
 until curl -Ls http://localhost:5000/v3; do
@@ -135,10 +169,10 @@ EOF
 # Kind will be ready after exiting this func
 kindSetup() {
   echo "creating kind cluster" >&3
-  kind delete cluster --name $CLUSTER_NAME || true
-  kind create cluster --config kind/kind.yaml --name $CLUSTER_NAME 
+  $KIND_BIN delete cluster --name $CLUSTER_NAME || true
+  $KIND_BIN create cluster --config kind/kind.yaml --name $CLUSTER_NAME 
   echo "getting kubeconfig" >&3
-  kind get kubeconfig --name chat-cluster > $HOME/.kube/chat-cluster-config 
+  $KIND_BIN get kubeconfig --name chat-cluster > $HOME/.kube/chat-cluster-config 
 
   KUBECONFIG=$HOME/.kube/chat-cluster-config \
     kubectl wait --for=condition=Ready=true node --all --timeout=2m
@@ -152,7 +186,7 @@ keycloakSetup() {
 }
 
 helmDeployments() {
-  HELM_DIRS=(cert-manager external-dns nginx-ingress-controller)
+  HELM_DIRS=(cert-manager external-dns nginx-ingress-controller metallb)
   for helm_dir in "${HELM_DIRS[@]}"; do
     pushd $DIR/$helm_dir &>/dev/null
     echo "Installing $helm_dir" >&3

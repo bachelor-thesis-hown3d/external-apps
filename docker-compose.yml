@@ -10,23 +10,23 @@ services:
     ports:
       - 3306:3306
     networks:
-      - openstack
+      - chat-cluster
   rabbitmq:
     image: docker.io/bitnami/rabbitmq
     environment:
       - RABBITMQ_USERNAME=openstack
       - RABBITMQ_PASSWORD=openstack
     networks:
-      - openstack
+      - chat-cluster
   redis:
     image: docker.io/bitnami/redis
     networks:
-      - openstack
+      - chat-cluster
     environment:
       - ALLOW_EMPTY_PASSWORD=yes
   designate-mdns:
     hostname: designate-mdns
-    image: docker.io/kolla/ubuntu-binary-designate-mdns:victoria
+    image: docker.io/kolla/ubuntu-binary-designate-mdns:xena
     volumes:
       - ./openstack-components/designate/mdns:/var/lib/kolla/config_files/mdns
       - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf
@@ -34,27 +34,26 @@ services:
       - KOLLA_CONFIG_STRATEGY=COPY_ONCE
       - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/mdns/config.json
     networks:
-      openstack:
-        ipv4_address: 10.255.255.20
+      - chat-cluster
     depends_on:
       - mysql
       - rabbitmq
   designate-worker:
-    image: docker.io/kolla/ubuntu-binary-designate-worker:victoria
+    image: docker.io/kolla/ubuntu-binary-designate-worker:xena
     volumes:
       - ./openstack-components/designate/worker:/var/lib/kolla/config_files/worker
       - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf
-      - ./openstack-components/designate/bind/secret:/var/lib/kolla/secret
+      - ./openstack-components/designate/bind:/var/lib/kolla/secret
     environment:
       - KOLLA_CONFIG_STRATEGY=COPY_ONCE
       - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/worker/config.json
     networks:
-      - openstack
+      - chat-cluster
     depends_on:
       - mysql
       - rabbitmq
   designate-producer:
-    image: docker.io/kolla/ubuntu-binary-designate-producer:victoria
+    image: docker.io/kolla/ubuntu-binary-designate-producer:xena
     volumes:
       - ./openstack-components/designate/producer:/var/lib/kolla/config_files/producer
       - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf
@@ -62,39 +61,26 @@ services:
       - KOLLA_CONFIG_STRATEGY=COPY_ONCE
       - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/producer/config.json
     networks:
-      - openstack
+      - chat-cluster
     depends_on:
       - mysql
       - rabbitmq
   designate-central:
-    image: docker.io/kolla/ubuntu-binary-designate-central:victoria
+    image: docker.io/kolla/ubuntu-binary-designate-central:xena
     volumes:
       - ./openstack-components/designate/central:/var/lib/kolla/config_files/central
       - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf
+      - ./openstack-components/designate/manager:/var/lib/kolla/config_files/manager
     environment:
       - KOLLA_CONFIG_STRATEGY=COPY_ONCE
       - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/central/config.json
     networks:
-      - openstack
+      - chat-cluster
     depends_on:
       - mysql
       - rabbitmq
-  designate-manage:
-    image: docker.io/kolla/ubuntu-binary-designate-central:victoria
-    volumes:
-      - ./openstack-components/designate/manager:/var/lib/kolla/config_files/manager
-      - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf
-    environment:
-      - KOLLA_CONFIG_STRATEGY=COPY_ONCE
-      - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/manager/config.json
-    networks:
-      - openstack
-    depends_on:
-      - mysql
-      - rabbitmq
-      - designate-central
   designate-api:
-    image: docker.io/kolla/ubuntu-binary-designate-api:victoria
+    image: docker.io/kolla/ubuntu-binary-designate-api:xena
     volumes:
       - ./openstack-components/designate/api:/var/lib/kolla/config_files/api
       - ./openstack-components/designate/conf:/var/lib/kolla/config_files/conf
@@ -102,7 +88,7 @@ services:
       - KOLLA_CONFIG_STRATEGY=COPY_ONCE
       - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/api/config.json
     networks:
-      - openstack
+      - chat-cluster
     depends_on:
       - mysql
       - rabbitmq
@@ -110,15 +96,13 @@ services:
     domainname: ns1.chat-cluster.com
     image: docker.io/internetsystemsconsortium/bind9:9.17
     volumes:
-      - ./openstack-components/designate/bind/conf:/etc/bind/conf
-      - ./openstack-components/designate/bind/secret:/etc/rndc_keys
-    command: ["/usr/sbin/named", "-g", "-c", "/etc/bind/conf/named.conf", "-u", "bind"]
+      - ./openstack-components/designate/bind:/etc/bind/
     networks:
-      openstack:
-        ipv4_address: 10.255.255.21
+      - chat-cluster
+    command: ["/usr/sbin/named", "-g", "-d", "9", "-c", "/etc/bind/named.conf", "-u", "bind"]
   keystone:
     hostname: keystone
-    image: docker.io/kolla/ubuntu-binary-keystone:victoria
+    image: docker.io/kolla/ubuntu-binary-keystone:xena
     volumes:
       - ./openstack-components/keystone:/var/lib/kolla/config_files
     environment:
@@ -126,7 +110,7 @@ services:
       - KOLLA_CONFIG_FILE=/var/lib/kolla/config_files/config.json
       - KEYSTONE_ADMIN_PASSWORD=keystoneAdmin
     networks:
-      - openstack
+      - chat-cluster
     depends_on:
       - mysql
     ports:
@@ -136,7 +120,7 @@ services:
       - 5001:5001
   keycloak:
     networks:
-      - openstack
+      - chat-cluster
     build:
       context: keycloak/
     environment:
@@ -154,6 +138,6 @@ services:
     depends_on:
       - mysql
 networks:
-  openstack:
-    external: true
+  chat-cluster:
     name: chat-cluster
+    external: true
