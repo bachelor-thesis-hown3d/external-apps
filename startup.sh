@@ -71,7 +71,7 @@ networkSetup() {
   NETWORK=$NETWORK yq e -i ".networks.$NETWORK.external = true" docker-compose.yml
   
   echo "Setting up metallb network range"
-  CIDR=$($DOCKER_BIN inspect network $NETWORK --format "{{ (index .IPAM.Config 0).Subnet }}")
+  CIDR=$($DOCKER_BIN inspect $NETWORK --format "{{ (index .IPAM.Config 0).Subnet }}")
   IP_PREFIX=$(echo $CIDR | cut -d '.' -f1-3)
   METALLB_RANGE="${IP_PREFIX}.240-${IP_PREFIX}.250"
   METALLB_RANGE=$METALLB_RANGE yq e -i ".configInline.address-pools[0].addresses[0] = strenv(METALLB_RANGE)" metallb/values.yaml

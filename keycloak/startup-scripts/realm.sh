@@ -18,7 +18,7 @@ $KCADM config credentials \
 $KCADM create realms -s realm=kubernetes -s enabled=true
 
 #id=$($KCADM get clients -r kubernetes --query clientId=kubernetes --fields id --format 'csv' | tr -d '"')
-opts='-s clientId=kubernetes -s redirectUris=["/kubernetes/*"]'
+opts='-s clientId=kubernetes -s redirectUris=["http://localhost:7070/kubernetes/*"]'
 #if test -z $id; then
 clientID=$($KCADM create clients -r kubernetes $opts | awk -F \' '{print $(NF-1)}')
 #else 
