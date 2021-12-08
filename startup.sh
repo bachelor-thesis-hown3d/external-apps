@@ -5,26 +5,9 @@ set -o errtrace # Enable the err trap, code will get called when an error is det
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && /bin/pwd )"
 
-if test -z $1; then
-  echo "Arg1: Cluster-name"
-  exit 1
-fi
 
-NETWORK=$1
-DOCKER_BIN="docker"
-PID=$(id -u $(whoami))
-#DOCKER_OPTS="DOCKER_HOST=unix:///run/user/$PID/podman/podman.sock"
-#DOCKER_OPTS="DOCKER_HOST=unix:///run/podman/podman.sock"
-DOCKER_RUN="$DOCKER_BIN run --network $NETWORK --rm"
-CLUSTER_NAME=$1
-PROJECT="external-apps"
-COMPOSE="docker-compose"
-KIND_BIN="kind"
-EXTERNAL_DNS_USERNAME="external-dns"
-EXTERNAL_DNS_PASSWORD="external-dns"
 
 #export $DOCKER_OPTS
-export KIND_EXPERIMENTAL_${DOCKER_BIN^^}_NETWORK=$NETWORK
 export KIND_EXPERIMENTAL_PROVIDER=$DOCKER_BIN
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/concurrent.lib.sh"
@@ -52,10 +35,11 @@ retry() {
 
 
 openstackRun() {
-  local project=$1
-  local username=$2
-  local password=$3
-  shift 3
+  local network=$1
+  local project=$2
+  local username=$3
+  local password=$4
+  shift 4
   local command=$*
   OPENSTACK_ENV=(
     "-e OS_PROJECT_DOMAIN_NAME=Default"
@@ -67,25 +51,32 @@ openstackRun() {
     "-e OS_IDENTITY_API_VERSION=3"
     "-e OS_IMAGE_API_VERSION=2"
   )
-  OPENSTACK="$DOCKER_RUN $(printf '%s ' "${OPENSTACK_ENV[@]}") docker.io/openstacktools/openstack-client openstack"
+  OPENSTACK="${DOCKER_BIN} run --network=$network --rm $(printf '%s ' "${OPENSTACK_ENV[@]}") docker.io/openstacktools/openstack-client openstack"
   
   $OPENSTACK $command
 }
 
 getIPOfContainer() {
-  local container=$1
-  $DOCKER_BIN container inspect $container --format '{{json .NetworkSettings.Networks }}' | jq -r '."'"$NETWORK"'".IPAddress'
+  local network=$1
+  local container=$2
+  $DOCKER_BIN container inspect $container --format '{{json .NetworkSettings.Networks }}' | jq -r '."'"$network"'".IPAddress'
 }
 
 getCIDROfNetwork () {
-  $DOCKER_BIN inspect $NETWORK --format "{{ (index .IPAM.Config 0).Subnet }}"
+  local network=$1
+  $DOCKER_BIN inspect $network --format "{{ (index .IPAM.Config 0).Subnet }}"
 }
 
 cleanup() {
+  local network
+  local cluster_name
+  network=$1
+  cluster_name=$1
   $COMPOSE down
-  kind delete cluster --name $CLUSTER_NAME || true
-  $DOCKER_BIN network rm $NETWORK || true
-  exit 1
+  kind delete cluster --name $cluster_name || true
+  $DOCKER_BIN network rm $network || true
+  sudo sed '/keycloak/d' /etc/hosts >/dev/null
+  exit 0
 }
 
 error() {
@@ -102,17 +93,19 @@ error() {
 }
 
 networkSetup() {
+  local network
+  network=$1
   echo "Creating Docker network for cluster" >&3 || true
-  $DOCKER_BIN network create $NETWORK
+  $DOCKER_BIN network create $network || true
   echo "Setting network name in docker-compose file" >&3 || true
   (
-    export NETWORK=$NETWORK
+    export NETWORK=$network
     yq e -i ".networks.chat-cluster.name = strenv(NETWORK)" docker-compose.yml
     yq e -i ".networks.chat-cluster.external = true" docker-compose.yml
   )
   
   echo "Setting up metallb network range" >&3
-  CIDR=$(getCIDROfNetwork)
+  CIDR=$(getCIDROfNetwork $network)
   IP_PREFIX=$(echo $CIDR | cut -d '.' -f1-3)
   METALLB_RANGE="${IP_PREFIX}.240-${IP_PREFIX}.250"
   METALLB_RANGE=$METALLB_RANGE yq e -i ".configInline.address-pools[0].addresses[0] = strenv(METALLB_RANGE)" metallb/values.yaml
@@ -121,6 +114,8 @@ networkSetup() {
 
 
 openstackSetup() {
+  local network
+  network=$1
   DESIGNATE_PASSWORD=designate
   DESIGNATE_USERNAME=designate
   
@@ -134,8 +129,8 @@ openstackSetup() {
     exit 1
   elif [[ $DOCKER_BIN == "docker" ]]
   then
-    MDNS_IP=$(getIPOfContainer $PROJECT-designate-mdns-1)
-    BIND_IP=$(getIPOfContainer $PROJECT-bind-1)
+    MDNS_IP=$(getIPOfContainer $network $PROJECT-designate-mdns-1)
+    BIND_IP=$(getIPOfContainer $network $PROJECT-bind-1)
   fi
   (
     BIND_IP=$BIND_IP yq e -i ".[0].nameservers[0].host = strenv(BIND_IP)" openstack-components/designate/manager/pools.yaml
@@ -152,41 +147,43 @@ openstackSetup() {
   retry 15 curl -Ls http://localhost:5000/v3
   
   echo 'creating service project' >&3
-  openstackRun admin admin \
-  keystoneAdmin project create service --domain default
+  openstackRun $network admin admin keystoneAdmin \
+  project create service --domain default
   echo 'creating apps project' >&3
-  openstackRun admin admin \
-  keystoneAdmin project create apps --domain default
+  openstackRun $network admin admin keystoneAdmin \
+  project create apps --domain default
   
   echo 'creating designate user' >&3
-  openstackRun admin admin \
-  keystoneAdmin user create --domain default --password $DESIGNATE_PASSWORD $DESIGNATE_USERNAME
+  openstackRun $network admin admin keystoneAdmin \
+  user create --domain default --password $DESIGNATE_PASSWORD $DESIGNATE_USERNAME
   echo 'creating designate role' >&3
-  openstackRun admin admin \
+  openstackRun $network admin admin \
   keystoneAdmin role add --project service --user $DESIGNATE_USERNAME admin
   echo 'creating designate service' >&3
-  openstackRun admin admin \
+  openstackRun $network admin admin \
   keystoneAdmin service create --name $DESIGNATE_USERNAME --description "DNS" dns
   echo 'creating designate endpoint' >&3
-  openstackRun admin admin \
+  openstackRun $network admin admin \
   keystoneAdmin endpoint create --region RegionDev dns public http://designate-api:9001
   echo 'creating designate chat-cluster.com zone' >&3
 }
 
 externalDNSSetup() {
+  local network
+  network=$1
   echo 'creating external-dns user' >&3
-  openstackRun admin admin \
+  openstackRun $network admin admin \
   keystoneAdmin user create --domain default --project apps --password $EXTERNAL_DNS_PASSWORD $EXTERNAL_DNS_USERNAME
   echo 'creating external-dns role' >&3
-  openstackRun admin admin keystoneAdmin \
+  openstackRun $network admin admin keystoneAdmin \
   role add --project apps --user $EXTERNAL_DNS_USERNAME admin
   
-  retry 10 openstackRun apps $EXTERNAL_DNS_USERNAME $EXTERNAL_DNS_PASSWORD  \
+  retry 10 openstackRun $network apps $EXTERNAL_DNS_USERNAME $EXTERNAL_DNS_PASSWORD  \
   zone create --email dnsmaster@example.com chat-cluster.com.
   
   echo "Add Keycloak to designate dns" >&3
-  ip=$(getIPOfContainer $PROJECT-keycloak-1)
-  zone_id=$(openstackRun apps $EXTERNAL_DNS_USERNAME $EXTERNAL_DNS_PASSWORD zone list -f value -c id)
+  ip=$(getIPOfContainer $network $PROJECT-keycloak-1)
+  zone_id=$(openstackRun $network apps $EXTERNAL_DNS_USERNAME $EXTERNAL_DNS_PASSWORD zone list -f value -c id)
   openstackRun apps $EXTERNAL_DNS_USERNAME $EXTERNAL_DNS_PASSWORD \
   recordset create "$zone_id" --type A --record "$ip" keycloak.chat-cluster.com.
   
@@ -201,23 +198,38 @@ EOF
 
 # Kind will be ready after exiting this func
 kindSetup() {
+  local network
+  local cluster_name
+  network=$1
+  cluster_name=$1
+  
+  export KIND_EXPERIMENTAL_${DOCKER_BIN^^}_NETWORK=$network
   echo "creating kind cluster" >&3
-  $KIND_BIN delete cluster --name $CLUSTER_NAME || true
-  $KIND_BIN create cluster --config kind/kind.yaml --name $CLUSTER_NAME
+  $KIND_BIN delete cluster --name $cluster_name || true
+  $KIND_BIN create cluster --config kind/kind.yaml --name $cluster_name
   echo "getting kubeconfig" >&3
-  $KIND_BIN get kubeconfig --name $CLUSTER_NAME > $HOME/.kube/chat-cluster-config
+  $KIND_BIN get kubeconfig --name $cluster_name > $HOME/.kube/chat-cluster-config
   
   echo "waiting for cluster to become ready" >&3
   KUBECONFIG=$HOME/.kube/chat-cluster-config \
   kubectl wait --for=condition=Ready=true node --all --timeout=2m
   
-  BIND_IP=$(getIPOfContainer $PROJECT-bind-1)
-  echo "configure coredns to point to designate-dns" >&3
+  #BIND_IP=$(getIPOfContainer $PROJECT-bind-1)
+  #echo "configure coredns to point to designate-dns" >&3
+  #CoreDNSWithDesignateDNS $BIND_IP
+}
+
+# $1 = IP of Bind DNS
+CoreDNSWithDesignateDNS() {
   kubectl get configmap coredns -n kube-system -o yaml > /tmp/cm.yaml
   cat /tmp/cm.yaml | yq e '.data.Corefile' - > /tmp/Corefile
 cat <<EOF >> /tmp/Corefile
 chat-cluster.com:53 {
-    forward . $BIND_IP
+    forward . $1
+    cache 30
+    errors
+    log
+    debug
 }
 EOF
   sed -i 's/^/        /'  /tmp/Corefile
@@ -236,15 +248,19 @@ EOF
 
 # Creates the realm inside keycloak
 keycloakSetup() {
-  local ip
-  local zone_id
+  local $network
   local keycloak_admin_password
   local keycloak_admin_user
+  local ip
   
+  network=$1
   keycloak_admin_password="keycloak"
   keycloak_admin_user="admin"
   $COMPOSE exec keycloak /tmp/scripts/realm.sh $keycloak_admin_user $keycloak_admin_password
   
+  echo "add keycloak ip to hosts file, might need password since it's run as sudo" >&3
+  ip=$(getIPOfContainer $network $PROJECT-keycloak-1)
+  echo "$ip keycloak" | sudo tee -a /etc/hosts > /dev/null
 }
 
 helmDeployments() {
@@ -257,18 +273,48 @@ helmDeployments() {
   done
 }
 
-#trap 'error ${LINENO}' ERR
+usage() {
+  echo -e "start: Start local cluster and openstack\n\tArg1: Cluster-name"
+  echo -e "cleanup: delete local cluster and openstack\n\tArg1: Cluster-name"
+}
 
-concurrent \
-- "network Setup" networkSetup \
---and-then \
-- "openstack Setup" openstackSetup \
-- "kind Setup" kindSetup \
-- "external-dns Setup" externalDNSSetup \
-- "helm Deployments" helmDeployments \
-- "keycloak Setup" keycloakSetup \
---require "openstack Setup" \
---before "external-dns Setup" \
---before "keycloak Setup" \
---require "kind Setup" \
---before "helm Deployments"
+#trap 'error ${LINENO}' ERR
+DOCKER_BIN="docker"
+#DOCKER_OPTS="DOCKER_HOST=unix:///run/user/$PID/podman/podman.sock"
+#DOCKER_OPTS="DOCKER_HOST=unix:///run/podman/podman.sock"
+PROJECT="external-apps"
+COMPOSE="docker-compose"
+KIND_BIN="kind"
+EXTERNAL_DNS_USERNAME="external-dns"
+EXTERNAL_DNS_PASSWORD="external-dns"
+
+case "$1" in
+  "start")
+    shift
+    cluster_name=$1
+    if test -z "$cluster_name"; then
+      echo -e "Start: \nArg1: Cluster-name"
+      exit 1
+    fi
+    concurrent \
+    - "network Setup" networkSetup "$cluster_name" \
+    --and-then \
+    - "openstack Setup" openstackSetup $cluster_name \
+    - "kind Setup" kindSetup "$cluster_name" \
+    - "external-dns Setup" externalDNSSetup $cluster_name \
+    - "helm Deployments" helmDeployments \
+    - "keycloak Setup" keycloakSetup $cluster_name \
+    --require "openstack Setup" \
+    --before "external-dns Setup" \
+    --before "keycloak Setup" \
+    --require "kind Setup" \
+    --before "helm Deployments"
+  ;;
+  "cleanup")
+    shift
+    cleanup $1
+  ;;
+  *)
+    usage
+  ;;
+esac

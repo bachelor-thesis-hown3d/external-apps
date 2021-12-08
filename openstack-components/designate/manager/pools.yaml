@@ -11,7 +11,7 @@
   # List out the nameservers for this pool. These are the actual BIND servers.
   # We use these to verify changes have propagated to all nameservers.
   nameservers:
-    - host: "172.20.0.6"
+    - host: "192.168.0.4"
       port: 53
   # List out the targets for this pool. For BIND, most often, there will be one
   # entry for each BIND server.
@@ -21,13 +21,13 @@
       # List out the designate-mdns servers from which BIND servers should
       # request zone transfers (AXFRs) from.
       masters:
-        - host: "172.20.0.11"
+        - host: "192.168.0.12"
           port: 5354
       # BIND Configuration options
       options:
-        host: "172.20.0.6"
+        host: "192.168.0.4"
         port: 53
-        rndc_host: "172.20.0.6"
+        rndc_host: "192.168.0.4"
         rndc_port: 953
         rndc_key_file: /etc/designate/rndc.key
 

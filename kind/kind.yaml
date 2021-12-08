@@ -16,7 +16,7 @@ nodes:
         kind: ClusterConfiguration
         apiServer:
           extraArgs:
-            oidc-issuer-url: "https://keycloak.chat-cluster.com:8443/auth/realms/kubernetes"
+            oidc-issuer-url: "https://keycloak:8443/auth/realms/kubernetes"
             oidc-client-id: "kubernetes"
             oidc-ca-file: "/etc/ssl/certs/keycloak/ca.pem"
             oidc-username-claim: "email"
