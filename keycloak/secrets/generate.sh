@@ -19,7 +19,7 @@ subjectAltName = @alt_names
 
 [alt_names]
 DNS.1 = localhost
-DNS.2 = keycloak.chat-cluster.com
+DNS.2 = keycloak
 EOF
 
 openssl genrsa -out $DIR/ca-key.pem 2048

@@ -75,7 +75,7 @@ cleanup() {
   $COMPOSE down
   kind delete cluster --name $cluster_name || true
   $DOCKER_BIN network rm $network || true
-  sudo sed '/keycloak/d' /etc/hosts >/dev/null
+  sudo sed -i '/keycloak/d' /etc/hosts
   exit 0
 }
 
@@ -119,6 +119,8 @@ openstackSetup() {
   DESIGNATE_PASSWORD=designate
   DESIGNATE_USERNAME=designate
   
+  echo "Creating keycloak certs" >&3
+  bash $DIR/keycloak/secrets/generate.sh
   echo "Creating openstack docker containers" >&3
   $COMPOSE --project-name $PROJECT up --build --remove-orphans -d --force-recreate
   
@@ -184,7 +186,7 @@ externalDNSSetup() {
   echo "Add Keycloak to designate dns" >&3
   ip=$(getIPOfContainer $network $PROJECT-keycloak-1)
   zone_id=$(openstackRun $network apps $EXTERNAL_DNS_USERNAME $EXTERNAL_DNS_PASSWORD zone list -f value -c id)
-  openstackRun apps $EXTERNAL_DNS_USERNAME $EXTERNAL_DNS_PASSWORD \
+  openstackRun $network apps $EXTERNAL_DNS_USERNAME $EXTERNAL_DNS_PASSWORD \
   recordset create "$zone_id" --type A --record "$ip" keycloak.chat-cluster.com.
   
 cat << EOF > external-dns/secret.yaml
@@ -249,19 +251,19 @@ EOF
 # Creates the realm inside keycloak
 keycloakSetup() {
   local $network
-  local keycloak_admin_password
-  local keycloak_admin_user
-  local ip
+  # local keycloak_admin_password
+  # local keycloak_admin_user
   
   network=$1
-  keycloak_admin_password="keycloak"
-  keycloak_admin_user="admin"
-  $COMPOSE exec keycloak /tmp/scripts/realm.sh $keycloak_admin_user $keycloak_admin_password
-  
-  echo "add keycloak ip to hosts file, might need password since it's run as sudo" >&3
-  ip=$(getIPOfContainer $network $PROJECT-keycloak-1)
-  echo "$ip keycloak" | sudo tee -a /etc/hosts > /dev/null
+  #keycloak_admin_password="keycloak"
+  #keycloak_admin_user="admin"
+  #$COMPOSE exec keycloak /tmp/scripts/realm.sh $keycloak_admin_user $keycloak_admin_password
+  $DOCKER_BIN run --network $network --rm -v $DIR/keycloak/terraform:/keycloak hashicorp/terraform \
+  -chdir=/keycloak init
+  $DOCKER_BIN run --network $network --rm -v $DIR/keycloak/terraform:/keycloak hashicorp/terraform \
+  -chdir=/keycloak apply
 }
+
 
 helmDeployments() {
   HELM_DIRS=(cert-manager external-dns nginx-ingress-controller metallb)
@@ -309,6 +311,9 @@ case "$1" in
     --before "keycloak Setup" \
     --require "kind Setup" \
     --before "helm Deployments"
+    echo "add keycloak ip to hosts file, might need password since it's run as sudo"
+    ip=$(getIPOfContainer $cluster_name $PROJECT-keycloak-1)
+    echo "$ip keycloak" | sudo tee -a /etc/hosts > /dev/null
   ;;
   "cleanup")
     shift

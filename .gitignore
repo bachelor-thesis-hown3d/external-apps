@@ -1,3 +1,5 @@
 secret.yaml
 clouds.yml
 .logs/*
+.terraform
+terraform.tfstate*
