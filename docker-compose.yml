@@ -100,6 +100,8 @@ services:
     networks:
       - chat-cluster
     command: ["/usr/sbin/named", "-g", "-d", "9", "-c", "/etc/bind/named.conf", "-u", "bind"]
+    ports:
+      - 127.0.0.53:53:53/udp
   keystone:
     hostname: keystone
     image: docker.io/kolla/ubuntu-binary-keystone:xena
@@ -139,5 +141,5 @@ services:
       - mysql
 networks:
   chat-cluster:
-    name: chat-cluster
+    name: "chat-cluster"
     external: true

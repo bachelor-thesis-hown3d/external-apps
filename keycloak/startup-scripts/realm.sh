@@ -25,4 +25,4 @@ clientID=$($KCADM create clients -r kubernetes $opts | awk -F \' '{print $(NF-1)
 #$KCADM update clients/$id -r kubernetes $opts
 #fi
 
-#$KCADM get clients/$clientID/client-secret -r kubernetes
+#$KCADM get clients/kubernetes/client-secret -r kubernetes
