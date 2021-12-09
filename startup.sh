@@ -196,6 +196,9 @@ extraEnv:
   - name: OS_PASSWORD
     value: $EXTERNAL_DNS_PASSWORD
 EOF
+  
+  external_dns_dir=( "external-dns" )
+  helmDeployments "${external_dns_dir[@]}"
 }
 
 # Kind will be ready after exiting this func
@@ -261,12 +264,12 @@ keycloakSetup() {
   $DOCKER_BIN run --network $network --rm -v $DIR/keycloak/terraform:/keycloak hashicorp/terraform \
   -chdir=/keycloak init
   $DOCKER_BIN run --network $network --rm -v $DIR/keycloak/terraform:/keycloak hashicorp/terraform \
-  -chdir=/keycloak apply
+  -chdir=/keycloak apply -auto-approve
 }
 
 
 helmDeployments() {
-  HELM_DIRS=(cert-manager external-dns nginx-ingress-controller metallb)
+  HELM_DIRS=("$@")
   for helm_dir in "${HELM_DIRS[@]}"; do
     pushd $DIR/$helm_dir &>/dev/null
     echo "Installing $helm_dir" >&3
@@ -298,13 +301,15 @@ case "$1" in
       echo -e "Start: \nArg1: Cluster-name"
       exit 1
     fi
+    
+    HELM_DIRS=(cert-manager nginx-ingress-controller metallb)
     concurrent \
     - "network Setup" networkSetup "$cluster_name" \
     --and-then \
     - "openstack Setup" openstackSetup $cluster_name \
     - "kind Setup" kindSetup "$cluster_name" \
     - "external-dns Setup" externalDNSSetup $cluster_name \
-    - "helm Deployments" helmDeployments \
+    - "helm Deployments" helmDeployments "${HELM_DIRS[@]}" \
     - "keycloak Setup" keycloakSetup $cluster_name \
     --require "openstack Setup" \
     --before "external-dns Setup" \

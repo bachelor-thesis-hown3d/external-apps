@@ -20,3 +20,4 @@ nodes:
             oidc-client-id: "kubernetes"
             oidc-ca-file: "/etc/ssl/certs/keycloak/ca.pem"
             oidc-username-claim: "email"
+            oidc-username-prefix: "oidc:"
