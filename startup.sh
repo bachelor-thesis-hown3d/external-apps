@@ -167,7 +167,6 @@ openstackSetup() {
   echo 'creating designate endpoint' >&3
   openstackRun $network admin admin \
   keystoneAdmin endpoint create --region RegionDev dns public http://designate-api:9001
-  echo 'creating designate chat-cluster.com zone' >&3
 }
 
 externalDNSSetup() {
@@ -180,6 +179,7 @@ externalDNSSetup() {
   openstackRun $network admin admin keystoneAdmin \
   role add --project apps --user $EXTERNAL_DNS_USERNAME admin
   
+  echo 'creating designate chat-cluster.com zone' >&3
   retry 10 openstackRun $network apps $EXTERNAL_DNS_USERNAME $EXTERNAL_DNS_PASSWORD  \
   zone create --email dnsmaster@example.com chat-cluster.com.
   
@@ -302,7 +302,7 @@ case "$1" in
       exit 1
     fi
     
-    HELM_DIRS=(cert-manager nginx-ingress-controller metallb)
+    HELM_DIRS=( cert-manager nginx-ingress-controller metallb )
     concurrent \
     - "network Setup" networkSetup "$cluster_name" \
     --and-then \
